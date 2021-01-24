@@ -17,6 +17,8 @@ var peer_media_elements = {}; /* keep track of our <video>/<audio> tags, indexed
 /** Also see: https://gist.github.com/zziuni/3741933 **/
 var ICE_SERVERS = [{ url: "stun:stun.l.google.com:19302" }];
 
+const constraints = { audio: USE_AUDIO, video: USE_VIDEO };
+
 const socket = () => {
   const containerEl = useRef(null);
   useEffect(() => {
@@ -229,6 +231,31 @@ const socket = () => {
     });
   }, []);
 
+  const startStream = async (callback) => {
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    handleStream(stream, callback);
+  };
+
+  const handleStream = (stream, callback) => {
+    /* user accepted access to a/v */
+    console.log("Access granted to audio/video");
+    local_media_stream = stream;
+    var local_media = USE_VIDEO
+      ? document.createElement("video")
+      : document.createElement("audio");
+    local_media.setAttribute("autoplay", "autoplay");
+    local_media.setAttribute(
+      "muted",
+      "true"
+    ); /* always mute ourselves by default */
+    local_media.setAttribute("controls", "");
+    local_media.setAttribute("playsinline", "");
+    containerEl.current.append(local_media);
+    attachMediaStream(local_media, stream);
+
+    if (callback) callback();
+  };
+
   const attachMediaStream = function (element, stream) {
     console.log({
       element,
@@ -238,7 +265,7 @@ const socket = () => {
     element.srcObject = stream;
   };
 
-  const setup_local_media = (callback, errorback) => {
+  const setup_local_media = async (callback) => {
     if (local_media_stream != null) {
       /* ie, if we've already been initialized */
       if (callback) callback();
@@ -248,42 +275,14 @@ const socket = () => {
      * attach it to an <audio> or <video> tag if they give us access. */
     console.log("Requesting access to local audio / video inputs");
 
-    navigator.getUserMedia =
-      navigator.getUserMedia ||
-      navigator.webkitGetUserMedia ||
-      navigator.mozGetUserMedia ||
-      navigator.msGetUserMedia;
-
-    navigator.getUserMedia(
-      { audio: USE_AUDIO, video: USE_VIDEO },
-      function (stream) {
-        /* user accepted access to a/v */
-        console.log("Access granted to audio/video");
-        local_media_stream = stream;
-        var local_media = USE_VIDEO
-          ? document.createElement("video")
-          : document.createElement("audio");
-        local_media.setAttribute("autoplay", "autoplay");
-        local_media.setAttribute(
-          "muted",
-          "true"
-        ); /* always mute ourselves by default */
-        local_media.setAttribute("controls", "");
-        local_media.setAttribute("playsinline", "");
-        containerEl.current.append(local_media);
-        attachMediaStream(local_media, stream);
-
-        if (callback) callback();
-      },
-      function () {
-        /* user denied access to a/v */
-        console.log("Access denied for audio/video");
-        alert(
-          "You chose not to provide access to the camera/microphone, demo will not work."
-        );
-        if (errorback) errorback();
-      }
-    );
+    try {
+      await startStream(callback);
+    } catch (e) {
+      console.log("error: ", e);
+      alert(
+        "You chose not to provide access to the camera/microphone, demo will not work."
+      );
+    }
   };
 
   return (
