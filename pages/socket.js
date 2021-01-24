@@ -15,7 +15,7 @@ var peer_media_elements = {}; /* keep track of our <video>/<audio> tags, indexed
 
 /** You should probably use a different stun server doing commercial stuff **/
 /** Also see: https://gist.github.com/zziuni/3741933 **/
-var ICE_SERVERS = [{ url: "stun:stun.l.google.com:19302" }];
+var ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
 
 const constraints = { audio: USE_AUDIO, video: USE_VIDEO };
 
