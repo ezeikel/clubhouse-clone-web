@@ -2,7 +2,9 @@ import { useEffect, useRef } from "react";
 import io from "socket.io-client";
 
 var USE_AUDIO = true;
-var USE_VIDEO = true;
+var USE_VIDEO = {
+  facingMode: "user",
+};
 var DEFAULT_CHANNEL = "some-global-channel-name";
 var MUTE_AUDIO_BY_DEFAULT = false;
 
@@ -100,6 +102,7 @@ const socket = () => {
           remote_media.setAttribute("muted", "true");
         }
         remote_media.setAttribute("controls", "");
+        local_media.setAttribute("playsinline", "");
         peer_media_elements[peer_id] = remote_media;
         containerEl.current.append(remote_media);
 
@@ -266,6 +269,7 @@ const socket = () => {
           "true"
         ); /* always mute ourselves by default */
         local_media.setAttribute("controls", "");
+        local_media.setAttribute("playsinline", "");
         containerEl.current.append(local_media);
         attachMediaStream(local_media, stream);
 
