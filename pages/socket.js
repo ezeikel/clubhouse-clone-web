@@ -102,7 +102,7 @@ const socket = () => {
           remote_media.setAttribute("muted", "true");
         }
         remote_media.setAttribute("controls", "");
-        local_media.setAttribute("playsinline", "");
+        remote_media.setAttribute("playsinline", "");
         peer_media_elements[peer_id] = remote_media;
         containerEl.current.append(remote_media);
 
