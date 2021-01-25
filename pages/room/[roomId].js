@@ -28,6 +28,7 @@ const RoomPage = ({ roomId }) => {
       host: "localhost",
       port: "7000",
       path: "/peerjs",
+      secure: true,
     });
 
     myPeer.on("open", (id) => {
