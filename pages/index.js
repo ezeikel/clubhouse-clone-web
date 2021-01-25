@@ -1,14 +1,16 @@
-import useSWR from "swr";
-
-const fetcher = (url) => fetch(url).then((res) => res.text());
+import { useEffect } from "react";
+import { useRouter } from "next/router";
+import { v4 as uuidv4 } from "uuid";
 
 const Index = () => {
-  const { data, error } = useSWR("/api/hello", fetcher);
+  const router = useRouter();
 
-  if (error) return <div>Failed to load</div>;
-  if (!data) return <div>Loading...</div>;
+  useEffect(() => {
+    const roomId = uuidv4();
+    router.push(`/room/${roomId}`);
+  }, []);
 
-  return <div>{`Cookie from response: "${data}"`}</div>;
+  return null;
 };
 
 export default Index;
