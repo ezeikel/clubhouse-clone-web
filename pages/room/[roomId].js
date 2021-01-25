@@ -25,10 +25,10 @@ const RoomPage = ({ roomId }) => {
     const socket = io(process.env.NEXT_PUBLIC_API_URL);
 
     const myPeer = new Peer(undefined, {
-      host: "localhost",
-      port: "7000",
+      host: process.env.NEXT_PUBLIC_API_HOST,
+      port: process.env.NEXT_PUBLIC_API_PORT,
       path: "/peerjs",
-      secure: true,
+      secure: process.env.NODE_ENV === "production",
     });
 
     myPeer.on("open", (id) => {
