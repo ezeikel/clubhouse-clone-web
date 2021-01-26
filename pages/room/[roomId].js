@@ -1,102 +1,129 @@
-// https://www.youtube.com/watch?v=DvlyzDZDEq4&ab_channel=WebDevSimplified
+// https://github.com/coding-with-chaim/group-video-final/blob/d7f34070c9e060a3dd64214338df0255a44daf27/client/src/routes/Room.js#L20
 
-import { useEffect, useRef } from "react";
-import { useRouter } from "next/router";
-// import dynamic from "next/dynamic";
+import { useEffect, useRef, useState } from "react";
 import styled from "styled-components";
 import io from "socket.io-client";
+import Peer from "simple-peer";
 
-// const Peer = dynamic(() => import("peerjs"), {
-//   ssr: false,
-// });
-
-const Wrapper = styled.div`
+const Container = styled.div`
+  padding: 20px;
   display: flex;
+  height: 100vh;
+  width: 90%;
+  margin: auto;
+  flex-wrap: wrap;
 `;
+
+const StyledVideo = styled.video`
+  height: 40%;
+  width: 50%;
+`;
+
+const Video = (props) => {
+  const ref = useRef();
+
+  useEffect(() => {
+    props.peer.on("stream", (stream) => {
+      ref.current.srcObject = stream;
+    });
+  }, []);
+
+  return <StyledVideo playsInline autoPlay ref={ref} />;
+};
 
 const RoomPage = ({ roomId }) => {
   const containerEl = useRef(null);
 
+  const [peers, setPeers] = useState([]);
+  const socketRef = useRef();
+  const userVideo = useRef();
+  const peersRef = useRef([]);
+
   useEffect(() => {
-    startStream();
+    socketRef.current = io(process.env.NEXT_PUBLIC_API_URL);
+
+    navigator.mediaDevices
+      .getUserMedia({ video: true, audio: true })
+      .then((stream) => {
+        userVideo.current.srcObject = stream;
+        socketRef.current.emit("join room", roomId);
+        socketRef.current.on("all users", (users) => {
+          const peers = [];
+          users.forEach((userID) => {
+            const peer = createPeer(userID, socketRef.current.id, stream);
+            peersRef.current.push({
+              peerID: userID,
+              peer,
+            });
+            peers.push(peer);
+          });
+          setPeers(peers);
+        });
+
+        socketRef.current.on("user joined", (payload) => {
+          const peer = addPeer(payload.signal, payload.callerID, stream);
+          peersRef.current.push({
+            peerID: payload.callerID,
+            peer,
+          });
+
+          setPeers((users) => [...users, peer]);
+        });
+
+        socketRef.current.on("receiving returned signal", (payload) => {
+          const item = peersRef.current.find((p) => p.peerID === payload.id);
+          item.peer.signal(payload.signal);
+        });
+
+        socketRef.current.on("user-disconnected", (userId) => {
+          console.log("REMOVE VIDEO FROM SCREEN/REMOVE PEER", userId);
+          // if (peers[userId]) peers[userId].close();
+        });
+      });
   }, []);
 
-  const startStream = async () => {
-    const socket = io(process.env.NEXT_PUBLIC_API_URL);
-
-    const myPeer = new Peer(undefined, {
-      host: process.env.NEXT_PUBLIC_API_HOST,
-      port: process.env.NEXT_PUBLIC_API_PORT,
-      path: "/peerjs",
-      secure: process.env.NODE_ENV === "production",
+  function createPeer(userToSignal, callerID, stream) {
+    const peer = new Peer({
+      initiator: true,
+      trickle: false,
+      stream,
     });
 
-    myPeer.on("open", (id) => {
-      console.log({
-        roomId,
-        id,
-      });
-      socket.emit("join-room", roomId, id);
-    });
-
-    const myVideo = document.createElement("video");
-    myVideo.muted = true;
-
-    const peers = {};
-
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: true,
-      audio: true,
-    });
-
-    addVideoStream(myVideo, stream);
-
-    myPeer.on("call", (call) => {
-      call.answer(stream);
-
-      const video = document.createElement("video");
-      call.on("stream", (userVideoStream) => {
-        addVideoStream(video, userVideoStream);
+    peer.on("signal", (signal) => {
+      socketRef.current.emit("sending signal", {
+        userToSignal,
+        callerID,
+        signal,
       });
     });
 
-    socket.on("user-connected", (userId) => {
-      console.log("User connected " + userId);
-      connectToNewUser(userId, stream);
+    return peer;
+  }
+
+  function addPeer(incomingSignal, callerID, stream) {
+    const peer = new Peer({
+      initiator: false,
+      trickle: false,
+      stream,
     });
 
-    socket.on("user-disconnected", (userId) => {
-      if (peers[userId]) peers[userId].close();
+    peer.on("signal", (signal) => {
+      socketRef.current.emit("returning signal", { signal, callerID });
     });
 
-    const connectToNewUser = (userId, stream) => {
-      const call = myPeer.call(userId, stream);
-      const video = document.createElement("video");
-      call.on("stream", (userVideoStream) => {
-        addVideoStream(video, userVideoStream);
-      });
-      call.on("close", () => {
-        video.remove();
-      });
+    peer.signal(incomingSignal);
 
-      peers[userId] = call;
-    };
-  };
-
-  const addVideoStream = (video, stream) => {
-    video.srcObject = stream;
-    video.addEventListener("loadedmetadata", () => {
-      video.play();
-    });
-
-    containerEl.current.append(video);
-  };
+    return peer;
+  }
 
   return (
-    <Wrapper>
-      <h1>Room {roomId}</h1>
-      <div ref={containerEl} />
-    </Wrapper>
+    <Container>
+      <h1>Room: {roomId}</h1>
+      <StyledVideo muted ref={userVideo} autoPlay playsInline />
+      {peers.map((peer, index) => {
+        return <Video key={index} peer={peer} />;
+      })}
+    </Container>
   );
 };
 
