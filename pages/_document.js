@@ -36,38 +36,6 @@ class MyDocument extends Document {
       sheet.seal();
     }
   }
-
-  setGoogleAnalyticsTags() {
-    return {
-      __html: `
-        window.dataLayer = window.dataLayer || [];
-        function gtag(){dataLayer.push(arguments);}
-        gtag('js', new Date());
-
-        gtag('config', 'G-PKC9SQ34MW');
-      `,
-    };
-  }
-
-  render() {
-    return (
-      <Html>
-        <Head>
-          {/* Global site tag (gtag.js) - Google Analytics */}
-          {/* <script
-            async
-            src="https://www.googletagmanager.com/gtag/js?id=G-PKC9SQ34MW"
-          ></script>
-          <script dangerouslySetInnerHTML={this.setGoogleAnalyticsTags()} /> */}
-          <script src="https://unpkg.com/peerjs@1.3.1/dist/peerjs.min.js"></script>
-        </Head>
-        <body>
-          <Main />
-          <NextScript />
-        </body>
-      </Html>
-    );
-  }
 }
 
 export default MyDocument;
