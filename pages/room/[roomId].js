@@ -40,9 +40,15 @@ const Video = ({ peer, peerID }) => {
 
 const RoomPage = ({ roomId }) => {
   const socket = useSocket();
-  const [peers, setPeers] = useState([]);
+
+  const [peers, _setPeers] = useState([]);
+  const peersRef = useRef(peers); // https://stackoverflow.com/questions/55265255/react-usestate-hook-event-handler-using-initial-state
+  const setPeers = (data) => {
+    peersRef.current = data;
+    _setPeers(data);
+  };
+
   const userVideo = useRef();
-  const peersRef = useRef([]);
 
   useEffect(() => {
     if (!socket) return;
@@ -53,21 +59,17 @@ const RoomPage = ({ roomId }) => {
         userVideo.current.srcObject = stream;
         socket.emit("join room", roomId);
         socket.on("all users", (users) => {
-          debugger;
           const peersAlreadyInRoom = [];
+
           users.forEach((userID) => {
             const peer = createPeer(userID, socket.id, stream);
-            peersRef.current.push({
-              peerID: userID,
-              peer,
-            });
+
             peersAlreadyInRoom.push({
               peerID: userID,
               peer,
             });
           });
 
-          debugger;
           setPeers(peersAlreadyInRoom);
         });
 
@@ -78,39 +80,22 @@ const RoomPage = ({ roomId }) => {
 
           if (!item) {
             const peer = addPeer(payload.signal, payload.callerID, stream);
-            peersRef.current.push({
-              peerID: payload.callerID,
-              peer,
-            });
 
             const peerObj = {
               peer,
               peerID: payload.callerID,
             };
 
-            console.log({ peers, peerObj });
-
-            debugger;
-            setPeers((users) => {
-              debugger;
-              console.log({ users });
-              return [...users, peerObj];
-            });
+            setPeers([...peersRef.current, peerObj]);
           }
         });
 
         socket.on("receiving returned signal", (payload) => {
-          // debugger;
           const item = peersRef.current.find((p) => p.peerID === payload.id);
-          console.log({ item });
-          if (!item || !item.peer) {
-            debugger;
-          }
           item.peer.signal(payload.signal);
         });
 
         socket.on("user left", (id) => {
-          // debugger;
           const peerObj = peersRef.current.find((p) => p.peerID === id);
           if (peerObj) {
             peerObj.peer.destroy();
@@ -119,14 +104,12 @@ const RoomPage = ({ roomId }) => {
           const remainingPeers = peersRef.current.filter(
             (p) => p.peerID !== id
           );
-          peersRef.current = peers;
 
-          debugger;
           setPeers(remainingPeers);
         });
 
         socket.on("room full", () => {
-          console.log("Sorry, that room is full.");
+          alert("Sorry, that room is full.");
         });
       });
   }, [socket]);
@@ -146,6 +129,10 @@ const RoomPage = ({ roomId }) => {
       });
     });
 
+    peer.on("close", () => {});
+
+    peer.on("error", (err) => console.error(err));
+
     return peer;
   }
 
@@ -160,6 +147,10 @@ const RoomPage = ({ roomId }) => {
       socket.emit("returning signal", { signal, callerID });
     });
 
+    peer.on("close", () => {});
+
+    peer.on("error", (err) => console.error(err));
+
     peer.signal(incomingSignal);
 
     return peer;
@@ -169,13 +160,12 @@ const RoomPage = ({ roomId }) => {
     <Container>
       <h1>Room: {roomId}</h1>
       <div>
-        <h1>You:</h1>
+        <h1>You: ({socket && socket.id})</h1>
         <StyledVideo muted ref={userVideo} autoPlay playsInline />
       </div>
       <div>
         <h1>Others:</h1>
         {peers.map((peer) => {
-          console.log(peer.peerID);
           return (
             <Video key={peer.peerID} peer={peer.peer} peerID={peer.peerID} />
           );
