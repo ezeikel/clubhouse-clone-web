@@ -16,8 +16,9 @@ const Container = styled.div`
 `;
 
 const StyledVideo = styled.video`
-  height: 40%;
-  width: 50%;
+  height: 64px;
+  width: 64px;
+  border-radius: 50%;
   border: 1px solid red;
 `;
 
@@ -49,6 +50,56 @@ const RoomPage = ({ roomId }) => {
   };
 
   const userVideo = useRef();
+  const buttonEl = useRef();
+
+  const [audioTrackEnabled, setAudioTrackEnabled] = useState(true);
+
+  let audioCtx, gainNode, analyser;
+
+  if (typeof window !== "undefined") {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    gainNode = audioCtx.createGain();
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 2048;
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+    analyser.getByteTimeDomainData(dataArray);
+
+    let audioVolume = 0;
+    let oldAudioVolume = 0;
+
+    function calcVolume() {
+      requestAnimationFrame(calcVolume);
+
+      analyser.getByteTimeDomainData(dataArray);
+      let mean = 0;
+      for (let i = 0; i < dataArray.length; i++) {
+        mean += Math.abs(dataArray[i] - 127);
+      }
+      mean /= dataArray.length;
+      mean = Math.round(mean);
+      if (mean < 2) {
+        audioVolume = 0;
+      } else if (mean < 5) {
+        audioVolume = 1;
+      } else {
+        audioVolume = 2;
+      }
+
+      if (audioVolume !== oldAudioVolume) {
+        console.log(audioVolume); // call the function with current audio level
+        oldAudioVolume = audioVolume;
+      }
+    }
+
+    calcVolume();
+  }
+
+  useEffect(() => {
+    if (window.localStream) {
+      window.localStream.getAudioTracks()[0].enabled = audioTrackEnabled;
+    }
+  }, [audioTrackEnabled]);
 
   useEffect(() => {
     if (!socket) return;
@@ -57,6 +108,16 @@ const RoomPage = ({ roomId }) => {
       .getUserMedia({ video: true, audio: true })
       .then((stream) => {
         userVideo.current.srcObject = stream;
+
+        window.localStream = stream;
+
+        setAudioTrackEnabled(stream.getAudioTracks()[0].enabled);
+
+        const source = audioCtx.createMediaStreamSource(stream);
+        source.connect(gainNode);
+        gainNode.connect(analyser);
+        analyser.connect(audioCtx.destination);
+
         socket.emit("join room", roomId);
         socket.on("all users", (users) => {
           const peersAlreadyInRoom = [];
@@ -114,6 +175,19 @@ const RoomPage = ({ roomId }) => {
       });
   }, [socket]);
 
+  function voiceMute() {
+    if (buttonEl.current.id === "") {
+      gainNode.gain.value = 0;
+      buttonEl.current.id = "activated";
+      buttonEl.current.textContent = "Unmute";
+    } else {
+      gainNode.gain.value = 1;
+      buttonEl.current.id = "";
+      buttonEl.current.textContent = "Mute";
+    }
+    console.log(gainNode.gain.value);
+  }
+
   function createPeer(userToSignal, callerID, stream) {
     const peer = new Peer({
       initiator: true,
@@ -162,6 +236,15 @@ const RoomPage = ({ roomId }) => {
       <div>
         <h1>You: ({socket && socket.id})</h1>
         <StyledVideo muted ref={userVideo} autoPlay playsInline />
+        <button
+          ref={buttonEl}
+          onClick={() => {
+            setAudioTrackEnabled(!audioTrackEnabled);
+          }}
+        >
+          {audioTrackEnabled ? "mute" : "unmute"}
+        </button>
+        )
       </div>
       <div>
         <h1>Others:</h1>
