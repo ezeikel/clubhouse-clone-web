@@ -19,22 +19,68 @@ const StyledVideo = styled.video`
   height: 64px;
   width: 64px;
   border-radius: 50%;
-  border: 1px solid red;
+  border: 3px solid ${({ volume }) => (volume > 0 ? "#000" : "transparent")};
 `;
 
-const Video = ({ peer, peerID }) => {
+const Video = ({ peer, peerID, muted }) => {
   const ref = useRef();
+  const [volume, setVolume] = useState(0);
+
+  let audioCtx, gainNode, analyser;
+  let audioVolume = 0;
+  let oldAudioVolume = 0;
 
   useEffect(() => {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    gainNode = audioCtx.createGain();
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 2048;
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+    analyser.getByteTimeDomainData(dataArray);
+
+    function calcVolume() {
+      requestAnimationFrame(calcVolume);
+
+      analyser.getByteTimeDomainData(dataArray);
+      let mean = 0;
+      for (let i = 0; i < dataArray.length; i++) {
+        mean += Math.abs(dataArray[i] - 127);
+      }
+      mean /= dataArray.length;
+      mean = Math.round(mean);
+      if (mean < 2) {
+        audioVolume = 0;
+      } else if (mean < 5) {
+        audioVolume = 1;
+      } else {
+        audioVolume = 2;
+      }
+
+      if (audioVolume !== oldAudioVolume) {
+        // let ui respond to volume change
+        setVolume(audioVolume);
+        oldAudioVolume = audioVolume;
+      }
+    }
+
+    calcVolume();
+
     peer.on("stream", (stream) => {
       ref.current.srcObject = stream;
+
+      const source = audioCtx.createMediaStreamSource(stream);
+      source.connect(gainNode);
+      gainNode.connect(analyser);
+      analyser.connect(audioCtx.destination);
     });
   }, []);
 
   return (
     <div>
       <h3>{peerID}</h3>
-      <StyledVideo playsInline autoPlay ref={ref} />
+      <StyledVideo playsInline autoPlay ref={ref} volume={volume} />
+      {muted && <span>Muted</span>}
     </div>
   );
 };
@@ -53,6 +99,7 @@ const RoomPage = ({ roomId }) => {
   const buttonEl = useRef();
 
   const [audioTrackEnabled, setAudioTrackEnabled] = useState(true);
+  const [userVolume, setUserVolume] = useState(0);
 
   let audioCtx, gainNode, analyser;
 
@@ -87,7 +134,7 @@ const RoomPage = ({ roomId }) => {
       }
 
       if (audioVolume !== oldAudioVolume) {
-        console.log(audioVolume); // call the function with current audio level
+        setUserVolume(audioVolume);
         oldAudioVolume = audioVolume;
       }
     }
@@ -98,6 +145,11 @@ const RoomPage = ({ roomId }) => {
   useEffect(() => {
     if (window.localStream) {
       window.localStream.getAudioTracks()[0].enabled = audioTrackEnabled;
+
+      socket.emit("sending mutechange", {
+        peerID: socket.id,
+        muted: !audioTrackEnabled,
+      });
     }
   }, [audioTrackEnabled]);
 
@@ -118,17 +170,24 @@ const RoomPage = ({ roomId }) => {
         gainNode.connect(analyser);
         analyser.connect(audioCtx.destination);
 
-        socket.emit("join room", roomId);
+        socket.emit("join room", {
+          roomId,
+          muted: !stream.getAudioTracks()[0].enabled,
+        });
+
         socket.on("all users", (users) => {
           const peersAlreadyInRoom = [];
 
-          users.forEach((userID) => {
-            const peer = createPeer(userID, socket.id, stream);
+          users.forEach(({ socketId, muted }) => {
+            if (socketId !== socket.id) {
+              const peer = createPeer(socketId, socket.id, stream);
 
-            peersAlreadyInRoom.push({
-              peerID: userID,
-              peer,
-            });
+              peersAlreadyInRoom.push({
+                peerID: socketId,
+                peer,
+                muted,
+              });
+            }
           });
 
           setPeers(peersAlreadyInRoom);
@@ -145,6 +204,7 @@ const RoomPage = ({ roomId }) => {
             const peerObj = {
               peer,
               peerID: payload.callerID,
+              muted: false,
             };
 
             setPeers([...peersRef.current, peerObj]);
@@ -172,21 +232,26 @@ const RoomPage = ({ roomId }) => {
         socket.on("room full", () => {
           alert("Sorry, that room is full.");
         });
+
+        socket.on("returning mutechange", (payload) => {
+          const peerObj = peersRef.current.find(
+            (p) => p.peerID === payload.peerID
+          );
+
+          const remainingPeers = peersRef.current.filter(
+            (p) => p.peerID !== payload.peerID
+          );
+
+          setPeers([
+            ...remainingPeers,
+            {
+              ...peerObj,
+              muted: payload.muted,
+            },
+          ]);
+        });
       });
   }, [socket]);
-
-  function voiceMute() {
-    if (buttonEl.current.id === "") {
-      gainNode.gain.value = 0;
-      buttonEl.current.id = "activated";
-      buttonEl.current.textContent = "Unmute";
-    } else {
-      gainNode.gain.value = 1;
-      buttonEl.current.id = "";
-      buttonEl.current.textContent = "Mute";
-    }
-    console.log(gainNode.gain.value);
-  }
 
   function createPeer(userToSignal, callerID, stream) {
     const peer = new Peer({
@@ -235,7 +300,13 @@ const RoomPage = ({ roomId }) => {
       <h1>Room: {roomId}</h1>
       <div>
         <h1>You: ({socket && socket.id})</h1>
-        <StyledVideo muted ref={userVideo} autoPlay playsInline />
+        <StyledVideo
+          muted
+          ref={userVideo}
+          autoPlay
+          playsInline
+          volume={userVolume}
+        />
         <button
           ref={buttonEl}
           onClick={() => {
@@ -244,13 +315,17 @@ const RoomPage = ({ roomId }) => {
         >
           {audioTrackEnabled ? "mute" : "unmute"}
         </button>
-        )
       </div>
       <div>
         <h1>Others:</h1>
         {peers.map((peer) => {
           return (
-            <Video key={peer.peerID} peer={peer.peer} peerID={peer.peerID} />
+            <Video
+              key={peer.peerID}
+              peer={peer.peer}
+              peerID={peer.peerID}
+              muted={peer.muted}
+            />
           );
         })}
       </div>

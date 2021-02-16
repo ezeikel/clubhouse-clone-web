@@ -13,7 +13,6 @@ export const SocketContextProvider = ({ children }) => {
     setSocket(newSocket);
 
     return () => {
-      debugger;
       newSocket.disconnect();
     };
   }, []);
