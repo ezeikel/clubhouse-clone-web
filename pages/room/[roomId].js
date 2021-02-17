@@ -13,16 +13,35 @@ const Container = styled.div`
   height: 100vh;
   width: 90%;
   margin: auto;
+  box-sizing: border-box;
 `;
 
-const StyledVideo = styled.video`
+const Avatar = styled.div`
+  background-color: tomato;
   height: 64px;
   width: 64px;
   border-radius: 50%;
   border: 3px solid ${({ volume }) => (volume > 0 ? "#000" : "transparent")};
 `;
 
-const Video = ({ peer, peerID, muted }) => {
+const User = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+
+  > button,
+  > div:nth-of-type(2) {
+    margin-top: 16px;
+  }
+`;
+
+const UserList = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  grid-gap: 32px;
+`;
+
+const OtherUser = ({ peer, peerID, muted }) => {
   const ref = useRef();
   const [volume, setVolume] = useState(0);
 
@@ -77,11 +96,13 @@ const Video = ({ peer, peerID, muted }) => {
   }, []);
 
   return (
-    <div>
-      <h3>{peerID}</h3>
-      <StyledVideo playsInline autoPlay ref={ref} volume={volume} />
-      {muted && <span>Muted</span>}
-    </div>
+    <User>
+      <Avatar volume={volume} data-socket-id={peerID}>
+        <audio autoPlay ref={ref} />
+      </Avatar>
+      <div>{peerID.slice(peerID.length - 4)}</div>
+      {muted && <div>Muted</div>}
+    </User>
   );
 };
 
@@ -95,7 +116,7 @@ const RoomPage = ({ roomId }) => {
     _setPeers(data);
   };
 
-  const userVideo = useRef();
+  const userAudio = useRef();
   const buttonEl = useRef();
 
   const [audioTrackEnabled, setAudioTrackEnabled] = useState(true);
@@ -157,9 +178,9 @@ const RoomPage = ({ roomId }) => {
     if (!socket) return;
 
     navigator.mediaDevices
-      .getUserMedia({ video: true, audio: true })
+      .getUserMedia({ video: false, audio: true })
       .then((stream) => {
-        userVideo.current.srcObject = stream;
+        userAudio.current.srcObject = stream;
 
         window.localStream = stream;
 
@@ -295,39 +316,43 @@ const RoomPage = ({ roomId }) => {
     return peer;
   }
 
+  if (!socket) return null;
+
   return (
     <Container>
       <h1>Room: {roomId}</h1>
       <div>
-        <h1>You: ({socket && socket.id})</h1>
-        <StyledVideo
-          muted
-          ref={userVideo}
-          autoPlay
-          playsInline
-          volume={userVolume}
-        />
-        <button
-          ref={buttonEl}
-          onClick={() => {
-            setAudioTrackEnabled(!audioTrackEnabled);
-          }}
-        >
-          {audioTrackEnabled ? "mute" : "unmute"}
-        </button>
+        <UserList>
+          <User>
+            <Avatar volume={userVolume} data-socket-id={socket.id}>
+              <audio muted autoPlay ref={userAudio} />
+            </Avatar>
+            <div>{socket.id && socket.id.slice(socket.id.length - 4)}</div>
+            <button
+              ref={buttonEl}
+              onClick={() => {
+                setAudioTrackEnabled(!audioTrackEnabled);
+              }}
+            >
+              {audioTrackEnabled ? "mute" : "unmute"}
+            </button>
+          </User>
+        </UserList>
       </div>
       <div>
-        <h1>Others:</h1>
-        {peers.map((peer) => {
-          return (
-            <Video
-              key={peer.peerID}
-              peer={peer.peer}
-              peerID={peer.peerID}
-              muted={peer.muted}
-            />
-          );
-        })}
+        <h3>Others in the room</h3>
+        <UserList>
+          {peers.map((peer) => {
+            return (
+              <OtherUser
+                key={peer.peerID}
+                peer={peer.peer}
+                peerID={peer.peerID}
+                muted={peer.muted}
+              />
+            );
+          })}
+        </UserList>
       </div>
     </Container>
   );
