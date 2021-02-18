@@ -120,12 +120,42 @@ const RoomPage = ({ roomId }) => {
   const buttonEl = useRef();
 
   const [audioTrackEnabled, setAudioTrackEnabled] = useState(true);
-  const [userVolume, setUserVolume] = useState(0);
+  const [audioVolume, setAudioVolume] = useState(0);
+  const [oldAudioVolume, setOldAudioVolume] = useState(0);
+  const [userSpeaking, setUserSpeaking] = useState(false); // TODO: eventually pass this to avatar
+  const [userInteracted, setUserInteracted] = useState(false);
+  const [audioCtx, setAudioCtx] = useState(null);
 
-  let audioCtx, gainNode, analyser;
+  let gainNode, analyser;
 
-  if (typeof window !== "undefined") {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  useEffect(() => {
+    if (!audioCtx) return;
+
+    const resumeContext = async () => {
+      await audioCtx.resume();
+    };
+
+    if (userInteracted && audioCtx.state !== "running") {
+      resumeContext();
+    } else if (!userInteracted && audioCtx.state === "running") {
+      setUserInteracted(true);
+    }
+  }, [userInteracted, audioCtx]);
+
+  useEffect(() => {
+    setAudioCtx(new (window.AudioContext || window.webkitAudioContext)());
+  }, []);
+
+  useEffect(() => {
+    if (audioVolume !== oldAudioVolume) {
+      setUserSpeaking(audioVolume > 0);
+      setOldAudioVolume(audioVolume);
+    }
+  }, [audioVolume]);
+
+  useEffect(() => {
+    if (!audioCtx) return;
+
     gainNode = audioCtx.createGain();
     analyser = audioCtx.createAnalyser();
     analyser.fftSize = 2048;
@@ -133,10 +163,14 @@ const RoomPage = ({ roomId }) => {
     const dataArray = new Uint8Array(bufferLength);
     analyser.getByteTimeDomainData(dataArray);
 
-    let audioVolume = 0;
-    let oldAudioVolume = 0;
+    console.log({ initalContextState: audioCtx.state });
+
+    audioCtx.onstatechange = function () {
+      console.log({ stateChanged: audioCtx.state });
+    };
 
     function calcVolume() {
+      // console.log("calcVolume()"); // TODO: this is firing even when on mute
       requestAnimationFrame(calcVolume);
 
       analyser.getByteTimeDomainData(dataArray);
@@ -147,23 +181,20 @@ const RoomPage = ({ roomId }) => {
       mean /= dataArray.length;
       mean = Math.round(mean);
       if (mean < 2) {
-        audioVolume = 0;
+        setAudioVolume(0);
       } else if (mean < 5) {
-        audioVolume = 1;
+        setAudioVolume(1);
       } else {
-        audioVolume = 2;
-      }
-
-      if (audioVolume !== oldAudioVolume) {
-        setUserVolume(audioVolume);
-        oldAudioVolume = audioVolume;
+        setAudioVolume(2);
       }
     }
 
     calcVolume();
-  }
+  }, [audioCtx]);
 
   useEffect(() => {
+    if (!socket) return;
+
     if (window.localStream) {
       window.localStream.getAudioTracks()[0].enabled = audioTrackEnabled;
 
@@ -172,10 +203,10 @@ const RoomPage = ({ roomId }) => {
         muted: !audioTrackEnabled,
       });
     }
-  }, [audioTrackEnabled]);
+  }, [socket, audioTrackEnabled]);
 
   useEffect(() => {
-    if (!socket) return;
+    if (!socket || !audioCtx) return;
 
     navigator.mediaDevices
       .getUserMedia({ video: false, audio: true })
@@ -272,7 +303,7 @@ const RoomPage = ({ roomId }) => {
           ]);
         });
       });
-  }, [socket]);
+  }, [socket, audioCtx]);
 
   function createPeer(userToSignal, callerID, stream) {
     const peer = new Peer({
@@ -320,11 +351,23 @@ const RoomPage = ({ roomId }) => {
 
   return (
     <Container>
-      <h1>Room: {roomId}</h1>
+      <div>
+        <h1>Room: {roomId}</h1>
+        {!userInteracted && (
+          <button
+            onClick={() => {
+              console.log({ clickEvent: audioCtx.state });
+              setUserInteracted(true);
+            }}
+          >
+            Get started
+          </button>
+        )}
+      </div>
       <div>
         <UserList>
           <User>
-            <Avatar volume={userVolume} data-socket-id={socket.id}>
+            <Avatar volume={audioVolume} data-socket-id={socket.id}>
               <audio muted autoPlay ref={userAudio} />
             </Avatar>
             <div>{socket.id && socket.id.slice(socket.id.length - 4)}</div>
