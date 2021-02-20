@@ -91,7 +91,7 @@ const OtherUser = ({ peer, peerID, muted }) => {
       const source = audioCtx.createMediaStreamSource(stream);
       source.connect(gainNode);
       gainNode.connect(analyser);
-      // analyser.connect(audioCtx.destination);
+      analyser.connect(audioCtx.destination);
     });
   }, []);
 
@@ -232,7 +232,7 @@ const RoomPage = ({ roomId }) => {
         source.connect(gainNode);
         gainNode.connect(analyser);
         // https://dwayne.xyz/post/audio-visualizations-web-audio-api - says not to include this line and to call resume() straightaway
-        // analyser.connect(audioCtx.destination);
+        analyser.connect(audioCtx.destination);
 
         await audioCtx.resume();
 
