@@ -125,14 +125,19 @@ const RoomPage = ({ roomId }) => {
   const [userSpeaking, setUserSpeaking] = useState(false); // TODO: eventually pass this to avatar
   const [userInteracted, setUserInteracted] = useState(false);
   const [audioCtx, setAudioCtx] = useState(null);
+  const [audioCtxState, setAudioCtxState] = useState("suspended");
 
-  let gainNode, analyser;
+  let gainNode, analyser, audioCancel;
+
+  useEffect(() => {
+    setAudioCtx(new (window.AudioContext || window.webkitAudioContext)());
+  }, []);
 
   useEffect(() => {
     if (!audioCtx) return;
 
-    const resumeContext = async () => {
-      await audioCtx.resume();
+    const resumeContext = () => {
+      audioCtx.resume();
     };
 
     if (userInteracted && audioCtx.state !== "running") {
@@ -141,10 +146,6 @@ const RoomPage = ({ roomId }) => {
       setUserInteracted(true);
     }
   }, [userInteracted, audioCtx]);
-
-  useEffect(() => {
-    setAudioCtx(new (window.AudioContext || window.webkitAudioContext)());
-  }, []);
 
   useEffect(() => {
     if (audioVolume !== oldAudioVolume) {
@@ -164,14 +165,18 @@ const RoomPage = ({ roomId }) => {
     analyser.getByteTimeDomainData(dataArray);
 
     console.log({ initalContextState: audioCtx.state });
+    setAudioCtxState(audioCtx.state);
 
     audioCtx.onstatechange = function () {
       console.log({ stateChanged: audioCtx.state });
+      if (audioCtxState !== audioCtx.state) {
+        setAudioCtxState(audioCtx.state);
+      }
     };
 
     function calcVolume() {
-      // console.log("calcVolume()"); // TODO: this is firing even when on mute
-      requestAnimationFrame(calcVolume);
+      // TODO: cancel request animationframe when not on mute
+      audioCancel = requestAnimationFrame(calcVolume);
 
       analyser.getByteTimeDomainData(dataArray);
       let mean = 0;
@@ -198,6 +203,12 @@ const RoomPage = ({ roomId }) => {
     if (window.localStream) {
       window.localStream.getAudioTracks()[0].enabled = audioTrackEnabled;
 
+      // if (!audioTrackEnabled) {
+      //   // cancel loop if on mute
+      //   cancelAnimationFrame(audioCancel);
+      //   audioCancel = 0;
+      // }
+
       socket.emit("sending mutechange", {
         peerID: socket.id,
         muted: !audioTrackEnabled,
@@ -210,7 +221,7 @@ const RoomPage = ({ roomId }) => {
 
     navigator.mediaDevices
       .getUserMedia({ video: false, audio: true })
-      .then((stream) => {
+      .then(async (stream) => {
         userAudio.current.srcObject = stream;
 
         window.localStream = stream;
@@ -220,7 +231,10 @@ const RoomPage = ({ roomId }) => {
         const source = audioCtx.createMediaStreamSource(stream);
         source.connect(gainNode);
         gainNode.connect(analyser);
-        analyser.connect(audioCtx.destination);
+        // https://dwayne.xyz/post/audio-visualizations-web-audio-api - says not to include this line and to call resume() straightaway
+        // analyser.connect(audioCtx.destination);
+
+        await audioCtx.resume();
 
         socket.emit("join room", {
           roomId,
@@ -353,14 +367,15 @@ const RoomPage = ({ roomId }) => {
     <Container>
       <div>
         <h1>Room: {roomId}</h1>
-        {!userInteracted && (
+        {audioCtxState !== "running" && (
           <button
             onClick={() => {
+              // https://developers.google.com/web/updates/2017/09/autoplay-policy-changes#webaudio
               console.log({ clickEvent: audioCtx.state });
               setUserInteracted(true);
             }}
           >
-            Get started
+            Click here to start talking
           </button>
         )}
       </div>
