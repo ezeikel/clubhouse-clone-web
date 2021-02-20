@@ -91,7 +91,7 @@ const OtherUser = ({ peer, peerID, muted }) => {
       const source = audioCtx.createMediaStreamSource(stream);
       source.connect(gainNode);
       gainNode.connect(analyser);
-      analyser.connect(audioCtx.destination);
+      // analyser.connect(audioCtx.destination);
     });
   }, []);
 
