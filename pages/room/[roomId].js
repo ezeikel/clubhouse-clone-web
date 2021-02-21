@@ -149,6 +149,7 @@ const RoomPage = ({ roomId }) => {
 
   useEffect(() => {
     if (audioVolume !== oldAudioVolume) {
+      // TODO: emit socket event to show if socket is speaking or not
       setUserSpeaking(audioVolume > 0);
       setOldAudioVolume(audioVolume);
     }
@@ -193,8 +194,11 @@ const RoomPage = ({ roomId }) => {
         setAudioVolume(2);
       }
     }
-
     calcVolume();
+
+    return () => {
+      cancelAnimationFrame(audioCancel);
+    };
   }, [audioCtx]);
 
   useEffect(() => {
